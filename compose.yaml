@@ -3,7 +3,7 @@
 # Kafka 4.x removed ZooKeeper entirely, so the metadata quorum is served by a
 # dedicated controller node instead of a ZooKeeper ensemble.
 #
-#   controller-1  node 1   controller only, not reachable from the host
+#   kafka-controller-1  node 1   controller only, not reachable from the host
 #   kafka-1       node 11  localhost:19092
 #   kafka-2       node 12  localhost:29092
 #   kafka-3       node 13  localhost:39092
@@ -15,7 +15,7 @@ x-kafka: &kafka
 
 x-kafka-env: &kafka-env
   CLUSTER_ID: ${CLUSTER_ID:?set CLUSTER_ID in .env}
-  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller-1:9093
+  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-controller-1:9093
   KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
   KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
   KAFKA_LOG_DIRS: /var/lib/kafka/data
@@ -44,10 +44,10 @@ x-broker-healthcheck: &broker-healthcheck
   start_period: 20s
 
 services:
-  controller-1:
+  kafka-controller-1:
     <<: *kafka
-    container_name: controller-1
-    hostname: controller-1
+    container_name: kafka-controller-1
+    hostname: kafka-controller-1
     environment:
       <<: *kafka-env
       KAFKA_NODE_ID: 1
@@ -59,7 +59,7 @@ services:
       KAFKA_DEFAULT_REPLICATION_FACTOR: 3
       KAFKA_MIN_INSYNC_REPLICAS: 2
     volumes:
-      - controller-1-data:/var/lib/kafka/data
+      - kafka-controller-1-data:/var/lib/kafka/data
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/9093'"]
       interval: 5s
@@ -72,7 +72,7 @@ services:
     container_name: kafka-1
     hostname: kafka-1
     depends_on:
-      controller-1:
+      kafka-controller-1:
         condition: service_healthy
     ports:
       - "19092:19092"
@@ -90,7 +90,7 @@ services:
     container_name: kafka-2
     hostname: kafka-2
     depends_on:
-      controller-1:
+      kafka-controller-1:
         condition: service_healthy
     ports:
       - "29092:29092"
@@ -108,7 +108,7 @@ services:
     container_name: kafka-3
     hostname: kafka-3
     depends_on:
-      controller-1:
+      kafka-controller-1:
         condition: service_healthy
     ports:
       - "39092:39092"
@@ -126,7 +126,7 @@ networks:
     name: kafka
 
 volumes:
-  controller-1-data:
+  kafka-controller-1-data:
   kafka-1-data:
   kafka-2-data:
   kafka-3-data:
