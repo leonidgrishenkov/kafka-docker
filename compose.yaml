@@ -1,0 +1,132 @@
+# Apache Kafka 4.x cluster in KRaft mode: 1 controller + 3 brokers.
+#
+# Kafka 4.x removed ZooKeeper entirely, so the metadata quorum is served by a
+# dedicated controller node instead of a ZooKeeper ensemble.
+#
+#   controller-1  node 1   controller only, not reachable from the host
+#   kafka-1       node 11  localhost:19092
+#   kafka-2       node 12  localhost:29092
+#   kafka-3       node 13  localhost:39092
+
+x-kafka: &kafka
+  image: apache/kafka:4.3.1
+  restart: unless-stopped
+  networks: [kafka]
+
+x-kafka-env: &kafka-env
+  CLUSTER_ID: ${CLUSTER_ID:?set CLUSTER_ID in .env}
+  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@controller-1:9093
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+  KAFKA_LOG_DIRS: /var/lib/kafka/data
+
+x-broker-env: &broker-env
+  <<: *kafka-env
+  KAFKA_PROCESS_ROLES: broker
+  KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+  # Fallback for min.insync.replicas: the effective value comes from the
+  # cluster-level dynamic default the controller records at first format, and
+  # this static value only applies if that default is ever cleared.
+  KAFKA_MIN_INSYNC_REPLICAS: 2
+  # Internal-topic sizing; the coordinators that create them live on the brokers.
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+  KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: 3
+  KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: 2
+  KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+x-broker-healthcheck: &broker-healthcheck
+  test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+  interval: 10s
+  timeout: 10s
+  retries: 20
+  start_period: 20s
+
+services:
+  controller-1:
+    <<: *kafka
+    container_name: controller-1
+    hostname: controller-1
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: controller
+      KAFKA_LISTENERS: CONTROLLER://:9093
+      # Topic defaults live on the controller role as of Kafka 4.x; setting them
+      # on a broker is deprecated and ignored from 5.0 on.
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+    volumes:
+      - controller-1-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/9093'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  kafka-1:
+    <<: *kafka
+    container_name: kafka-1
+    hostname: kafka-1
+    depends_on:
+      controller-1:
+        condition: service_healthy
+    ports:
+      - "19092:19092"
+    environment:
+      <<: *broker-env
+      KAFKA_NODE_ID: 11
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:19092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-1:9092,EXTERNAL://localhost:19092
+    volumes:
+      - kafka-1-data:/var/lib/kafka/data
+    healthcheck: *broker-healthcheck
+
+  kafka-2:
+    <<: *kafka
+    container_name: kafka-2
+    hostname: kafka-2
+    depends_on:
+      controller-1:
+        condition: service_healthy
+    ports:
+      - "29092:29092"
+    environment:
+      <<: *broker-env
+      KAFKA_NODE_ID: 12
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-2:9092,EXTERNAL://localhost:29092
+    volumes:
+      - kafka-2-data:/var/lib/kafka/data
+    healthcheck: *broker-healthcheck
+
+  kafka-3:
+    <<: *kafka
+    container_name: kafka-3
+    hostname: kafka-3
+    depends_on:
+      controller-1:
+        condition: service_healthy
+    ports:
+      - "39092:39092"
+    environment:
+      <<: *broker-env
+      KAFKA_NODE_ID: 13
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:39092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-3:9092,EXTERNAL://localhost:39092
+    volumes:
+      - kafka-3-data:/var/lib/kafka/data
+    healthcheck: *broker-healthcheck
+
+networks:
+  kafka:
+    name: kafka
+
+volumes:
+  controller-1-data:
+  kafka-1-data:
+  kafka-2-data:
+  kafka-3-data:
