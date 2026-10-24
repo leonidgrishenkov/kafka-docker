@@ -44,6 +44,17 @@ x-broker-healthcheck: &broker-healthcheck
   start_period: 20s
 
 services:
+  # The controller owns the cluster metadata log (__cluster_metadata): broker
+  # registration and heartbeats (fencing brokers that go silent), partition
+  # leader election, topic creation, configs and ACLs. Brokers replicate this
+  # log and act on it. The controller stores no topic data and serves no
+  # clients, so it only exposes the CONTROLLER listener on the internal network.
+  #
+  # A single voter is a single point of failure for metadata. If it goes down,
+  # existing partition leaders keep serving for a while, but topics can't be
+  # created, a dead broker's partitions don't fail over, and restarted brokers
+  # can't register. Fine for local dev; production runs 3 or 5 controllers, all
+  # listed in KAFKA_CONTROLLER_QUORUM_VOTERS.
   kafka-controller-1:
     <<: *kafka
     container_name: kafka-controller-1
