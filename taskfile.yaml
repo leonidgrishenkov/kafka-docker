@@ -1,0 +1,17 @@
+---
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+version: "3"
+
+vars:
+ BOOTSTRAP_SERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+
+tasks:
+  default:
+    desc: List available tasks
+    silent: true
+    cmds:
+      - task --list
+
+  kafka-topics:
+    desc: kafka-topics commands
+    cmd: docker exec -it kafka-controller-1 /opt/kafka/bin/kafka-topics.sh --bootstrap-server={{ .BOOTSTRAP_SERVERS }} {{ .CLI_ARGS }}
